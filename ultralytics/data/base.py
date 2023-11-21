@@ -18,6 +18,60 @@ from ultralytics.utils import DEFAULT_CFG, LOCAL_RANK, LOGGER, NUM_THREADS, TQDM
 
 from .utils import HELP_URL, IMG_FORMATS
 
+def load_meta(blob_file:str):
+    meta_path = blob_file[:blob_file.rfind(".")] + ".mmeta"
+    with open(meta_path,'r') as size_f:
+        size_str = size_f.read()
+    size_list = size_str.split(",")
+    size_list = [int(x) for x in size_list]
+    #half = int(len(size_list)/2)
+    return size_list
+
+def load_label(blob_file:str,imgsz):
+    label_path = blob_file[:blob_file.rfind(".")] + ".mlabel"
+    with open(label_path,'r') as f:
+        label_str = f.read()
+    meta_list = load_meta(blob_file=blob_file)
+    
+    half = int(len(meta_list)/2)
+    label_objs = []
+    offset = 0
+    for item in meta_list[half:]:
+        label_item = label_str[offset:offset+item]
+        offset += item
+        label_object = eval(label_item)
+
+        #sub_labels = []
+        clss = []
+        boxes = []
+        for sub in label_object:
+            clss.append(int(sub[0]))
+            boxes.append(sub[1:])
+        clss_np = np.asarray(clss)
+        boxes_np = np.asarray(boxes).reshape((-1,4))
+        sub_x = dict(shape=[imgsz,imgsz],cls=clss_np,bboxes=boxes_np,normalized=True,bbox_format='xywh')
+        label_objs.append(sub_x)
+            #sub_labels.append(dict(shape=[imgsz,imgsz],cls=sub[0],bboxes=sub[1:],normalized=True,bbox_format='xywh'))
+        
+        #label_objs.append({"labels":sub_labels})
+
+    return label_objs
+    
+def load_imgs(blob_file:str):
+    with open(blob_file,'rb')  as img_f:
+        img_data = img_f.read()
+
+    meta_size = load_meta(blob_file=blob_file)
+    half = int(len(meta_size)/2)
+    offset = 0
+    imgs = []
+    for item in meta_size[:half]:
+        img_item = img_data[offset:offset+item]
+        offset += item
+        img_np = cv2.imdecode(np.frombuffer(img_item,dtype=np.uint8),cv2.IMREAD_COLOR)
+        imgs.append(img_np)
+    return imgs
+
 
 class BaseDataset(Dataset):
     """
@@ -70,9 +124,10 @@ class BaseDataset(Dataset):
         self.prefix = prefix
         self.fraction = fraction
         self.im_files = self.get_img_files(self.img_path)
-        self.labels = self.get_labels()
-        self.update_labels(include_class=classes)  # single_cls and include_class
-        self.ni = len(self.labels)  # number of images
+        # self.labels = self.get_labels()
+        #self.update_labels(include_class=classes)  # single_cls and include_class
+        #self.ni = len(self.labels)  # number of images
+        self.ni = len(self.im_files) 
         self.rect = rect
         self.batch_size = batch_size
         self.stride = stride
@@ -145,38 +200,9 @@ class BaseDataset(Dataset):
         """Loads 1 image from dataset index 'i', returns (im, resized hw)."""
         im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
         if im is None:  # not cached in RAM
-            if fn.exists():  # load npy
-                try:
-                    im = np.load(fn)
-                except Exception as e:
-                    LOGGER.warning(f'{self.prefix}WARNING ⚠️ Removing corrupt *.npy image file {fn} due to: {e}')
-                    Path(fn).unlink(missing_ok=True)
-                    im = cv2.imread(f)  # BGR
-            else:  # read image
-                im = cv2.imread(f)  # BGR
-            if im is None:
-                raise FileNotFoundError(f'Image Not Found {f}')
-
-            h0, w0 = im.shape[:2]  # orig hw
-            if rect_mode:  # resize long side to imgsz while maintaining aspect ratio
-                r = self.imgsz / max(h0, w0)  # ratio
-                if r != 1:  # if sizes are not equal
-                    w, h = (min(math.ceil(w0 * r), self.imgsz), min(math.ceil(h0 * r), self.imgsz))
-                    im = cv2.resize(im, (w, h), interpolation=cv2.INTER_LINEAR)
-            elif not (h0 == w0 == self.imgsz):  # resize by stretching image to square imgsz
-                im = cv2.resize(im, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
-
-            # Add to buffer if training with augmentations
-            if self.augment:
-                self.ims[i], self.im_hw0[i], self.im_hw[i] = im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
-                self.buffer.append(i)
-                if len(self.buffer) >= self.max_buffer_length:
-                    j = self.buffer.pop(0)
-                    self.ims[j], self.im_hw0[j], self.im_hw[j] = None, None, None
-
-            return im, (h0, w0), im.shape[:2]
-
-        return self.ims[i], self.im_hw0[i], self.im_hw[i]
+            imgs = load_imgs(f)
+            labels = load_label(f,self.imgsz)
+            return imgs,labels
 
     def cache_images(self, cache):
         """Cache images to memory or disk."""
@@ -245,7 +271,71 @@ class BaseDataset(Dataset):
 
     def __getitem__(self, index):
         """Returns transformed label information for given index."""
-        return self.transforms(self.get_image_and_label(index))
+        #return self.transforms(self.get_image_and_label(index))
+        #real_index = int(index / self.batch_size) # TODO fixed it
+        imgs = self.get_image_and_labels(index)
+        dsts = []
+        for img in imgs:
+            dsts.append(self.transforms(img))
+        return dsts
+
+
+
+    def get_image_and_labels(self, index):
+        """Get and return label information from the dataset."""
+        #label = deepcopy(self.labels[index])  # requires deepcopy() https://github.com/ultralytics/ultralytics/pull/1948
+        #label.pop('shape', None)  # shape is for rect, remove it
+        imgs,labels = self.load_image(index)
+        dsts = []
+        for i in range(len(imgs)):
+            img = imgs[i]
+            label = labels[i]
+            label['img'], label['ori_shape'], label['resized_shape'] = img,[self.imgsz,self.imgsz],[self.imgsz,self.imgsz]
+            label['ratio_pad'] = (label['resized_shape'][0] / label['ori_shape'][0],
+                              label['resized_shape'][1] / label['ori_shape'][1])  # for evaluation
+        #if self.rect:
+        #    label['rect_shape'] = self.batch_shapes[self.batch[index]]
+            self.update_labels_info(label)
+            dsts.append(label)
+        return dsts 
+
+
+    def load_image_old(self, i, rect_mode=True):
+        """Loads 1 image from dataset index 'i', returns (im, resized hw)."""
+        im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
+        if im is None:  # not cached in RAM
+            if fn.exists():  # load npy
+                try:
+                    im = np.load(fn)
+                except Exception as e:
+                    LOGGER.warning(f'{self.prefix}WARNING ⚠️ Removing corrupt *.npy image file {fn} due to: {e}')
+                    Path(fn).unlink(missing_ok=True)
+                    im = cv2.imread(f)  # BGR
+            else:  # read image
+                im = cv2.imread(f)  # BGR
+            if im is None:
+                raise FileNotFoundError(f'Image Not Found {f}')
+
+            h0, w0 = im.shape[:2]  # orig hw
+            if rect_mode:  # resize long side to imgsz while maintaining aspect ratio
+                r = self.imgsz / max(h0, w0)  # ratio
+                if r != 1:  # if sizes are not equal
+                    w, h = (min(math.ceil(w0 * r), self.imgsz), min(math.ceil(h0 * r), self.imgsz))
+                    im = cv2.resize(im, (w, h), interpolation=cv2.INTER_LINEAR)
+            elif not (h0 == w0 == self.imgsz):  # resize by stretching image to square imgsz
+                im = cv2.resize(im, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
+
+            # Add to buffer if training with augmentations
+            if self.augment:
+                self.ims[i], self.im_hw0[i], self.im_hw[i] = im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
+                self.buffer.append(i)
+                if len(self.buffer) >= self.max_buffer_length:
+                    j = self.buffer.pop(0)
+                    self.ims[j], self.im_hw0[j], self.im_hw[j] = None, None, None
+
+            return im, (h0, w0), im.shape[:2]
+
+        return self.ims[i], self.im_hw0[i], self.im_hw[i]
 
     def get_image_and_label(self, index):
         """Get and return label information from the dataset."""
@@ -257,10 +347,11 @@ class BaseDataset(Dataset):
         if self.rect:
             label['rect_shape'] = self.batch_shapes[self.batch[index]]
         return self.update_labels_info(label)
-
     def __len__(self):
         """Returns the length of the labels list for the dataset."""
-        return len(self.labels)
+        #return len(self.labels)
+        return self.ni
+
 
     def update_labels_info(self, label):
         """Custom your label format here."""

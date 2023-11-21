@@ -515,6 +515,7 @@ class RandomPerspective:
                                 box2=new_instances.bboxes.T,
                                 area_thr=0.01 if len(segments) else 0.10)
         labels['instances'] = new_instances[i]
+        #print("================== cls:{},i:{}".format(cls,i))
         labels['cls'] = cls[i]
         labels['img'] = img
         labels['resized_shape'] = img.shape[:2]

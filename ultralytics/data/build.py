@@ -95,6 +95,8 @@ def build_yolo_dataset(cfg, img_path, batch, data, mode='train', rect=False, str
         data=data,
         fraction=cfg.fraction if mode == 'train' else 1.0)
 
+def custom_collate_fn(data):
+    return data
 
 def build_dataloader(dataset, batch, workers, shuffle=True, rank=-1):
     """Return an InfiniteDataLoader or DataLoader for training or validation set."""
@@ -105,12 +107,14 @@ def build_dataloader(dataset, batch, workers, shuffle=True, rank=-1):
     generator = torch.Generator()
     generator.manual_seed(6148914691236517205 + RANK)
     return InfiniteDataLoader(dataset=dataset,
-                              batch_size=batch,
-                              shuffle=shuffle and sampler is None,
+                              #batch_size=batch,
+                              #shuffle=shuffle and sampler is None,
+                              #shuffle=
                               num_workers=nw,
                               sampler=sampler,
                               pin_memory=PIN_MEMORY,
-                              collate_fn=getattr(dataset, 'collate_fn', None),
+                              collate_fn=custom_collate_fn,
+                              #collate_fn=getattr(dataset, 'collate_fn', None),
                               worker_init_fn=seed_worker,
                               generator=generator)
 

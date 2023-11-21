@@ -137,8 +137,10 @@ class YOLODataset(BaseDataset):
     def build_transforms(self, hyp=None):
         """Builds and appends transforms to the list."""
         if self.augment:
-            hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
-            hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
+            #hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
+            #hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
+            hyp.mosaic =  0.0
+            hyp.mixup =  0.0
             transforms = v8_transforms(self, self.imgsz, hyp)
         else:
             transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
@@ -164,7 +166,7 @@ class YOLODataset(BaseDataset):
         # NOTE: cls is not with bboxes now, classification and semantic segmentation need an independent cls label
         # We can make it also support classification and semantic segmentation by add or remove some dict keys there.
         bboxes = label.pop('bboxes')
-        segments = label.pop('segments')
+        segments = label.pop('segments',None)
         keypoints = label.pop('keypoints', None)
         bbox_format = label.pop('bbox_format')
         normalized = label.pop('normalized')

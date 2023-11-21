@@ -1,0 +1,31 @@
+# COCO 2017 dataset http://cocodataset.org
+# Train command: python train.py --data coco.yaml
+# Default dataset location is next to /yolov5:
+#   /parent_folder
+#     /coco
+#     /yolov5
+#  0.891       0.876 
+# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
+train: [
+        /home/industai/datasets/北京训练验证/gdwDatasets/mergeData, #v1_v2
+
+        ]
+val: [
+      /home/industai/datasets/北京训练验证/gdwDatasets/mergeData, #v1_v2
+      # /home/industai/datasets/北京训练验证/gdwDatasets/v1_v2/images, #v1_v2
+      ]
+
+# number of classes
+nc: 100
+
+# class names
+# names: ['sly_bjbmyw', 'sly_dmyw', 'hxq_gjbs', 'hxq_gjtps', 'hxq_yfps', #4
+#                   'ywzt_yfyc', 'ywzt_yfzc', 'bj_wkps', 'bj_bpps', 'bj_bpmh', #9
+#                   'bjdsyc_zz', 'bjzc', 'gcc_mh', 'gcc_ps', 'yw_nc','yw_gkxfw', #tianchi
+#                   'cysb_cyg', 'cysb_sgz', 'cysb_tg', 'cysb_lqq', 
+#                   'cysb_qyb', 'qtjdq', 'ylsff', 'dl', 'pzq', 'jyh', 'drq', 'ddjt',
+#                   'yx', 'jdyxx', 'jyz', 'ecjxh', 'hxq', 'SF6ylb', 'xldlb', 'ylb', 'ywb', 
+#                   'ywj', 'ws_ywyc', 'ws_ywzc', 'ws_ywwz', 'yljdq_flow', 'yljdq_stop', 'fhz_f',
+#                   'fhz_h', 'fhz_ztyc', 'hxq_gjzc', 'pzqcd', 'jyhbx', 'drqgd', 'jyz_pl', 'yxdgsg', 
+#                   'jdyyxsd', 'bmwh', 'bjdsyc_sx', 'xmbhyc', 'xmbhzc', 'kgg_ybf', 'kgg_ybh', 'kk_f', 'kk_h',
+#                   'zsd_l', 'zsd_m', 'mbhp', 'jsxs_ddjt', 'jsxs_ddyx', 'jsxs_jdyxx', 'jsxs_ecjxh']
